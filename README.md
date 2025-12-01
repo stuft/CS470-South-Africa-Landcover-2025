@@ -1,5 +1,6 @@
 # CS470-South-Africa-Landcover-2025
-<h>The Code and data from SSU's CS470 FInal Project: Landcover identification in South Africa</h>
+##The Code and data from SSU's CS470 FInal Project: Landcover identification in South Africa
+<br />
 By: Shelby Anderson, Steven Tuft, Cooper Hochman
 
 <br />
@@ -13,7 +14,7 @@ By: Shelby Anderson, Steven Tuft, Cooper Hochman
 
 <div>
 
-<h>How to Run Code</h>
+###How to Run Code
 
 Our code is built in Jupyter Notebooks meant to run in Google Colab.
 
