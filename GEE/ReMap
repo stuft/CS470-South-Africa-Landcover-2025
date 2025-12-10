@@ -1,0 +1,142 @@
+// 1. Load both CSVs as FeatureCollections
+// (change these to your actual table asset IDs)
+var emb = ee.FeatureCollection('projects/cape-gang-cs470-fall-2025/assets/embedding_px_old_id');
+var train = ee.FeatureCollection('projects/cape-gang-cs470-fall-2025/assets/cleandf_train_id');
+var fc = ee.FeatureCollection('projects/cape-gang-cs470-fall-2025/assets/sample_boxes_shapefile');
+
+// 2. Join on system:index
+// We want: geometry from emb, attributes from train
+
+var joinFilter = ee.Filter.equals({
+  leftField:  'pixel_id',  // in emb
+  rightField: 'pixel_id'   // in train
+});
+
+// Inner join so we only keep rows that appear in both
+var innerJoined = ee.Join.inner().apply({
+  primary:   emb,   // has geometry
+  secondary: train, // has the filtered training rows
+  condition: joinFilter
+});
+
+// 3. Build a new FeatureCollection: geometry from emb, properties from train
+var trainWithGeom = ee.FeatureCollection(
+  innerJoined.map(function (f) {
+    f = ee.Feature(f);
+    var embFeat  = ee.Feature(f.get('primary'));   // has geometry + emb props
+    var trainFeat = ee.Feature(f.get('secondary'));// has cleandf_train props
+
+    // Return a feature with:
+    //  - all properties from cleandf_train
+    //  - geometry from embedding_px_old
+    return trainFeat.setGeometry(embFeat.geometry());
+  })
+);
+
+// --- DEBUG COUNTS BY SAMPLE_NUM ---
+var SAMPLE = 20617;  // change as needed
+
+var emb20617   = emb.filter(ee.Filter.eq('Sample_num', SAMPLE));
+var train20617 = train.filter(ee.Filter.eq('Sample_num', SAMPLE));
+var twg20617   = trainWithGeom.filter(ee.Filter.eq('Sample_num', SAMPLE));
+
+print('emb rows, Sample_num =', SAMPLE, emb20617.size());
+print('train rows, Sample_num =', SAMPLE, train20617.size());
+print('trainWithGeom rows, Sample_num =', SAMPLE, twg20617.size());
+
+// Optional: inspect the actual rows from cleandf_train
+print('train rows (first 40) for Sample_num = ' + SAMPLE,
+      train20617.limit(40));
+      
+var squares = trainWithGeom.map(function (f) {
+  return f.buffer(5).bounds(1);   // ~10 m square
+});
+
+// After trainWithGeom is defined:
+function goToSample(sampleId) {
+  // If Sample_num is numeric in your table, parse to int:
+  var id = parseInt(sampleId, 10);  // or just use sampleId directly if it's a string
+
+  var match = trainWithGeom.filter(ee.Filter.eq('Sample_num', id)).first();
+
+  // Center the map on the matching feature
+  Map.centerObject(match, 17);  // adjust zoom as you like
+
+  // Optionally highlight just that one square:
+  var sq = squares.filter(ee.Filter.eq('Sample_num', id));
+  Map.addLayer(sq, {color: 'yellow'}, 'Selected sample ' + sampleId);
+}
+
+
+// 4. Quick check
+print('Training features with geometry:', trainWithGeom.limit(5));
+
+// 5. Add to map
+// Style by class if you have FinalClass
+var vis = {
+  color: 'red',
+  pointRadius: 3
+};
+
+// ---- put this after trainWithGeom (and after squares if you use them) ----
+
+// Create a small panel
+var jumpPanel = ui.Panel({
+  style: {position: 'top-left', padding: '8px'}
+});
+
+jumpPanel.add(ui.Label({
+  value: 'Jump to Sample_num',
+  style: {fontWeight: 'bold'}
+}));
+
+// Text input for Sample_num
+var sampleInput = ui.Textbox({
+  placeholder: 'Enter Sample_num…'
+});
+
+// Button to trigger the jump
+var jumpButton = ui.Button({
+  label: 'Go',
+  onClick: function () {
+    var val = sampleInput.getValue();
+    if (!val) {
+      print('Please enter a Sample_num.');
+      return;
+    }
+
+    // If Sample_num is numeric, parse it; if it's a string, drop parseInt and use val directly
+    var id = parseInt(val, 10);
+
+    var match = trainWithGeom.filter(ee.Filter.eq('Sample_num', id));
+    var size = match.size();
+
+    size.evaluate(function (n) {
+      if (n === 0) {
+        print('No feature found for Sample_num =', val);
+      } else {
+        var feat = match.first();
+        Map.centerObject(feat, 17);
+
+        // Optional: clear old “selected” layer and add new one
+        Map.addLayer(
+          squares.filter(ee.Filter.eq('Sample_num', id)),
+          {color: 'yellow'},
+          'Selected Sample ' + val
+        );
+      }
+    });
+  }
+});
+
+jumpPanel.add(sampleInput);
+jumpPanel.add(jumpButton);
+
+// Add to the UI
+ui.root.insert(0, jumpPanel);
+
+var outlines = fc.style({color: '000000', width: 1, fillColor: '00000000'});
+
+Map.addLayer(outlines, {}, 'Original boxes (outline)');
+Map.centerObject(trainWithGeom, 11);  // adjust zoom as needed
+Map.addLayer(trainWithGeom, vis, 'Train 10x10m cells');

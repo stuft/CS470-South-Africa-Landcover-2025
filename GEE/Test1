@@ -1,0 +1,100 @@
+var fc = ee.FeatureCollection('projects/cape-gang-cs470-fall-2025/assets/sample_boxes_shapefile');
+var classAttr = 'Clss_Nm';       // field to color by
+var maxRadiusM = 500;             // 50 m target radius
+var midgapMarginM = 1;           // small gap so adjacent circles don't touch exactly
+var searchRadiusM = 10000;       // how far to look for nearest neighbor (increase if needed)
+
+/***** 1) Build a class -> color map (deterministic shuffle like A3) *****/
+var classList = fc.aggregate_array(classAttr).distinct();
+var classFC = ee.FeatureCollection(classList.map(function(c){ return ee.Feature(null, {cls: c}); }));
+classFC = classFC.randomColumn('rand', 42).sort('rand');
+var classes = classFC.aggregate_array('cls');
+
+var palette = ee.List([
+  '1b9e77','d95f02','7570b3','e7298a','66a61e','e6ab02','a6761d','666666',
+  '8dd3c7','ffffb3','bebada','fb8072','80b1d3','fdb462','b3de69','fccde5',
+  'bc80bd','ccebc5','ffed6f','7fc97f','fdc086','ffff99','386cb0','f0027f',
+  'bf5b17','999999','a6cee3','1f78b4','b2df8a','33a02c','fb9a99','e31a1c',
+  'fdbf6f','ff7f00','cab2d6','6a3d9a','ffff99','b15928','17becf','8c564b'
+]);
+var n = classes.size();
+var colors = ee.List.sequence(0, n.subtract(1)).map(function(i){
+  return palette.get(ee.Number(i).mod(palette.length()));
+});
+var class2color = ee.Dictionary.fromLists(classes, colors);
+
+/***** 2) Use centroids as point seeds *****/
+var pts = fc.map(function(f){
+  // robust centroid (10 m maxError)
+  var p = f.geometry().centroid(10);
+  return ee.Feature(p).copyProperties(f);
+});
+
+/***** 3) Save ALL neighbors (including self) within search radius *****/
+var within = ee.Filter.withinDistance({
+  distance: searchRadiusM,   // e.g., 10_000 m
+  leftField: '.geo',
+  rightField: '.geo'
+});
+
+var saveAllJoin = ee.Join.saveAll({
+  matchesKey: 'neighbors',    // list of neighbor features
+  measureKey: 'distances',    // list of distances (meters)
+  ordering: 'distance',
+  ascending: true
+});
+
+var withNeighbors = saveAllJoin.apply({
+  primary: pts,   // make sure pts was built with .filter(ee.Filter.geometry()) and centroid()
+  secondary: pts,
+  condition: within
+});
+
+/***** 4) Compute effective radius from the SECOND neighbor’s distance *****/
+/* radius = min(maxRadiusM, (d2/2 - margin)).
+   Robust to cases where 'distances' is missing or has only [0] (self only). */
+var circles = ee.FeatureCollection(withNeighbors).map(function (f) {
+  // If the join didn’t attach 'distances', default to empty list
+  var hasDistances = f.propertyNames().contains('distances');
+  var ds = ee.List(ee.Algorithms.If(hasDistances, f.get('distances'), ee.List([])));
+
+  // d2 = distance to nearest OTHER point (index 1), if present
+  var hasOther = ds.size().gt(1);
+  var d2 = ee.Algorithms.If(hasOther, ds.get(1), null);
+
+  var nearestHalf = ee.Algorithms.If(
+    d2, ee.Number(d2).divide(2.0).subtract(midgapMarginM),
+    maxRadiusM  // fallback if no neighbor found
+  );
+
+  var effRadius = ee.Number(nearestHalf).min(maxRadiusM).max(1); // clamp to >0
+
+  var p = ee.Geometry.Point(f.geometry().coordinates());
+  var circ = p.buffer(effRadius);
+
+  return ee.Feature(circ)
+           .copyProperties(f)
+           .set({
+             effective_radius_m: effRadius,
+             _has_other: hasOther
+           });
+});
+
+
+/***** 5) Style circles with class colors *****/
+var styledCircles = circles.map(function(f){
+  var key = ee.String(f.get(classAttr));
+  var fill = ee.Algorithms.If(class2color.contains(key), class2color.get(key), '999999');
+  return f.set('style', {color: '111111', width: 1, fillColor: fill});
+}).style({styleProperty: 'style'});
+
+/***** 6) (Optional) Show original boxes for comparison *****/
+var outlines = fc.style({color: '000000', width: 1, fillColor: '00000000'});
+
+Map.addLayer(outlines, {}, 'Original boxes (outline)');
+Map.addLayer(styledCircles, {}, 'Non-overlapping circles (<=50 m)');
+Map.centerObject(fc, 10);
+
+// Console helpers
+print('Class -> Color', class2color);
+print('Example feature with effective radius (m):', circles.first());

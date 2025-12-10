@@ -1,0 +1,73 @@
+// ================== CONFIG ==================
+var boxes = ee.FeatureCollection('projects/cape-gang-cs470-fall-2025/assets/sample_boxes_shapefile');  // <-- your shapefile asset
+var region = ee.Geometry.Rectangle([16, -35, 33, -22], null, false);               // ZA bounds (keep/change)
+
+// Embedding collection (annual)
+var dataset = ee.ImageCollection('GOOGLE/SATELLITE_EMBEDDING/V1/ANNUAL');
+
+// ================== BUILD 2022 IMAGE ==================
+var image2022 = dataset
+  .filterDate('2022-01-01', '2023-01-01')
+  .filterBounds(region)
+  .mosaic()
+  .toFloat();
+
+// (Optional) visualize three axes of the embedding space as an RGB (unchanged)
+Map.addLayer(image2022.select(['A08','A22','A11']),
+             {min:-0.3, max:0.3},
+             '2022 embeddings RGB');
+Map.centerObject(ee.Geometry.Point(24, -29), 6);
+Map.setOptions('SATELLITE');
+
+// ================== PER-PIXEL SAMPLES WITHIN EACH BOX ==================
+// Use the native scale of the embeddings
+var scale = image2022.projection().nominalScale();
+
+// Add pixel lon/lat as extra bands for easy downstream joins/plots
+var embWithXY = image2022.addBands(ee.Image.pixelLonLat()); // adds 'longitude','latitude' bands
+
+// Keep only features that intersect the region (optional but helps performance)
+var boxesInRegion = boxes.filterBounds(region);
+
+// SAMPLE ALL PIXELS INTERSECTING EACH POLYGON
+// This returns ONE ROW PER PIXEL, and copies the properties of the polygon (e.g., box_nr, Clss_Nm).
+var perPixel = embWithXY.sampleRegions({
+  collection: boxesInRegion,
+  properties: ['box_nr', 'Clss_Nm'],  // add any fields you want copied from the shapefile
+  scale: scale,
+  geometries: false,                  // set true if you want the sample point geometry; false keeps rows lighter
+  tileScale: 4                        // bump to 8 if you see memory issues
+});
+
+print('Per-pixel samples (first):', perPixel.first());
+print('Estimated rows (server-side):', perPixel.size());
+print('Embeddings native scale (m):', scale);
+
+// ================== EXPORTS ==================
+// These tables can be VERY large. Two options:
+//
+// Option 1: Single export (okay for modest sizes)
+// Export.table.toDrive({
+//   collection: perPixel,
+//   description: 'GEE_embeddings_per_pixel_2022',
+//   fileFormat: 'CSV'
+// });
+
+// Option 2: Sharded exports (safer for large data)
+// Create a random column and export 5 shards; adjust N_SHARDS to taste.
+var N_SHARDS = 5;
+var withRand = perPixel.randomColumn('rand', 42);
+
+for (var i = 0; i < N_SHARDS; i++) {
+  var lo = i / N_SHARDS;
+  var hi = (i + 1) / N_SHARDS;
+  var shard = withRand.filter(ee.Filter.gte('rand', lo))
+                      .filter(ee.Filter.lt('rand', hi));
+  Export.table.toDrive({
+    collection: shard,
+    description: 'GEE_embeddings_per_pixel_2022_shard_' + i,
+    fileFormat: 'CSV'
+    // You can add "selectors" to limit which columns to export.
+    // selectors: ['box_nr','Clss_Nm','longitude','latitude'].concat(image2022.bandNames())
+  });
+}

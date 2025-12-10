@@ -1,0 +1,72 @@
+// ================== CONFIG ==================
+var boxes = ee.FeatureCollection('users/<your_username>/CNN_Sample_Boxes_Merged');  // <-- your shapefile as a Table asset
+var region = ee.Geometry.Rectangle([16, -35, 33, -22], null, false);               // ZA bounds (keep/change as needed)
+
+// ================== LOAD EMBEDDINGS ==================
+var dataset = ee.ImageCollection('GOOGLE/SATELLITE_EMBEDDING/V1/ANNUAL');
+
+var image2022 = dataset
+  .filterDate('2022-01-01', '2023-01-01')
+  .filterBounds(region)
+  .mosaic()
+  .toFloat();
+
+// Visualize three axes of the embedding space as RGB (unchanged)
+var visParams = {min: -0.3, max: 0.3, bands: ['A08', 'A22', 'A11']};
+Map.addLayer(image2022, visParams, '2022 embeddings');
+
+// Center somewhere in South Africa (optional)
+Map.centerObject(ee.Geometry.Point(24.0, -29.0), 6);
+Map.setOptions('SATELLITE');
+
+// ================== EXTRACT FROM SHAPEFILE REGIONS ==================
+// 1) PER-POLYGON MEAN (one row per polygon; columns are <band>_mean)
+var scale = image2022.projection().nominalScale();
+
+// Build a reducer that computes mean per band
+var reducerMeanAllBands = ee.Reducer.mean().forEachBand(image2022);
+
+// Reduce over polygons
+var perBoxMeans = image2022.reduceRegions({
+  collection: boxes,          // each feature's geometry defines the region
+  reducer: reducerMeanAllBands,
+  scale: scale,               // native scale of the embeddings
+  tileScale: 2                // bump to 4/8 if you hit memory
+});
+
+// 2) PER-POLYGON CENTROID SAMPLE (one row per polygon; columns are raw band values)
+var centroids = boxes
+  .filter(ee.Filter.geometry())
+  .map(function(f){
+    return ee.Feature(f.geometry().centroid(10)).copyProperties(f);
+  });
+
+var centroidSamples = image2022.sampleRegions({
+  collection: centroids,
+  scale: scale,
+  geometries: true,   // keep geometry in the output
+  tileScale: 2
+});
+
+// ================== OPTIONAL: VISUAL CHECKS ==================
+var outlines = boxes.style({color: 'ffffff', width: 1, fillColor: '00000000'});
+Map.addLayer(outlines, {}, 'Shapefile boxes (outline)');
+
+print('Per-box MEANS (first):', perBoxMeans.first());
+print('Centroid SAMPLES (first):', centroidSamples.first());
+print('Embeddings native scale (m):', scale);
+
+// ================== EXPORTS ==================
+// A) Means per polygon
+Export.table.toDrive({
+  collection: perBoxMeans,
+  description: 'GEE_embeddings_per_box_means_2022',
+  fileFormat: 'CSV'
+});
+
+// B) Centroid samples per polygon
+Export.table.toDrive({
+  collection: centroidSamples,
+  description: 'GEE_embeddings_centroid_samples_2022',
+  fileFormat: 'CSV'
+});

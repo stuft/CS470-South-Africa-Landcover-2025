@@ -1,0 +1,38 @@
+// Load collection.
+var dataset = ee.ImageCollection('GOOGLE/SATELLITE_EMBEDDING/V1/ANNUAL');
+var boxes = ee.FeatureCollection('projects/cape-gang-cs470-fall-2025/assets/sample_boxes_shapefile');
+var a64 = ee.List.sequence(0, 63).map(function(n){
+  return ee.String('A').cat(ee.Number(n).format('%02d'));
+});
+// Point of interest.
+var point = ee.Geometry.Point(25.6, -33.96);
+
+// Get embedding images for two years.
+
+var region = ee.Geometry.Rectangle([16, -35, 33, -22], null, false);
+
+var image1 = dataset
+      .filterDate('2022-01-01', '2023-01-01')
+      .filterBounds(region)
+      .mosaic();
+
+// Visualize three axes of the embedding space as an RGB.
+var visParams = {min: -0.3, max: 0.3, bands: ['A08', 'A22', 'A11']};
+
+Map.addLayer(image1, visParams, '2022 embeddings');
+Map.addLayer(boxes, {}, 'Boxes');
+
+Map.centerObject(point, 12);
+Map.setOptions('SATELLITE');
+
+var sampled = image1.select(a64).sampleRegions({
+  collection: boxes,
+  scale: 10,
+  geometries: true
+});
+
+Export.table.toDrive({
+  collection: sampled,
+  description: 'embedding_px',
+  fileFormat: 'CSV'
+});
