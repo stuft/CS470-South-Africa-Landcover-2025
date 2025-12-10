@@ -19,12 +19,17 @@
 ### How to Run Code
 
 Our code is built in Jupyter Notebooks meant to run in Google Colab.
-
+<br />
 We also used Google Earth Engine to extract the Satelite Embeddings V1 data for our specific regions. The Data can be accessed with this link: https://code.earthengine.google.com/?accept_repo=users/tufts/Tests
+<br />
 It can also be found in the GEE folder in this repository.
+<br />
 GOOGLE_SATELLITE_EMBEDDING_V1_ANNUAL just maps the 2022 GEE embeddings over South Africa.
+<br />
 Test4 is the final version of the code used to extract the Satelite Embeddings V1 data.
+<br />
 ReMap maps both the cleaned pixel based data set as well as the original shapes, allowing a user to see which pixels were removed from those shapes.
+<br />
 In order to run these, run the files in GEE, and make sure the file paths at the top of each match your GEE storage paths.
 
 </div>
