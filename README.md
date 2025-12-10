@@ -43,7 +43,7 @@ ReMap maps both the cleaned pixel based data set as well as the original shapes,
 <br />
 In order to run these, run the files in GEE, and make sure the file paths at the top of each match your GEE storage paths.
 
-#### Largescale Pre-Classifier
+#### Assisted Labeller
 In addition, after our initial findings with our limited training data, we used a Roboflow-like program in order to increase the amount of labelled land shapes we had to try and further improve our accuracy.
 <br />
 
