@@ -17,9 +17,11 @@
 <div>
 
 ### How to Run Code
-
-Our code is built in Jupyter Notebooks meant to run in Google Colab.
+#### Jupyter Notebooks
+Our code is built in Jupyter Notebooks meant to run in Google Colab. The cells must be run in order, and will save the files to an attached Google Drive for use later. Some cells may take a while to run.
 <br />
+
+#### Google Earth Engine
 We also used Google Earth Engine to extract the Satelite Embeddings V1 data for our specific regions. The Data can be accessed with this link: https://code.earthengine.google.com/?accept_repo=users/tufts/Tests
 <br />
 It can also be found in the GEE folder in this repository.
