@@ -23,17 +23,11 @@ Our code is built in Jupyter Notebooks meant to run in Google Colab. The cells m
 CS470CapstoneTest1(6) is the latest version of the code. 
 <br />
 Important Cells include:
-<br />
 - Load Data: this is where the GEE data and labels are pulled from your Google Drive. Make sure the listed directories point at those data's locations.
-<br />
 - Existing Prep: this takes multiple intermediary steps and combines them together to gather all the data and combine it and ready it for cleaning.
-<br />
 - Training and Testing Data filters: These use Mahalanobis distance to drop outlier pixels. There is a prominant config block for each of the two cells where it can be adjusted.
-<br />
 - Fit training data (SVM GridSearch): The main cell, where the model is built using gridsearch to find the best parameters for the data. Take a really long time to run, even with strong hardware.
-<br />
 - Fit testing data: Despite what is says, this just runs the training model on the testing data, giving the true accuacy at the end.
-<br />
 - Display confusion matrix: Does what it says on the tin. Show the CM with true numbers not percentages to show the weights of each as well.
 
 #### Google Earth Engine
